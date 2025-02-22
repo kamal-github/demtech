@@ -147,3 +147,10 @@ make down
 
 *Note: Check `Makefile` for additional recipes and details.*
 
+## Improvements
+
+- More test cases can be added to cover further edge cases esp. for E2E tests.
+- The AWS SES API is really extensive and the documentation is quite spread and quite time consuming. Remaining behaviour that are missing, I wish I could implement them.
+- Instrumentation using OpenTelemetry.
+- More statistic can be added as per demand.
+
