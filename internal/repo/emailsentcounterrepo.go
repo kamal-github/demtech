@@ -8,6 +8,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+const sentEmailsStorageKey = "sent-emails"
+
 // RedisEmailTracker uses Redis to track emails in a n-hour window
 type RedisEmailTracker struct {
 	client                      *redis.Client
@@ -23,7 +25,7 @@ func NewRedisEmailTracker(client *redis.Client, trackingHoursForEmailsQuota time
 func (c *RedisEmailTracker) TrackSentEmail(ctx context.Context, msgID string) error {
 	// Use sorted set with timestamp as score
 	now := float64(time.Now().Unix())
-	if err := c.client.ZAdd(ctx, "email_sends", redis.Z{
+	if err := c.client.ZAdd(ctx, sentEmailsStorageKey, redis.Z{
 		Score:  now,
 		Member: msgID,
 	}).Err(); err != nil {
@@ -35,14 +37,15 @@ func (c *RedisEmailTracker) TrackSentEmail(ctx context.Context, msgID string) er
 
 // GetLastNHoursCount returns count of emails in last N hours
 func (c *RedisEmailTracker) GetLastNHoursCount(ctx context.Context) (int64, error) {
-	min := float64(time.Now().Add(-c.trackingHoursForEmailsQuota * time.Hour).Unix())
+
+	min := float64(time.Now().Add(-c.trackingHoursForEmailsQuota).Unix())
 	max := float64(time.Now().Unix())
-	return c.client.ZCount(ctx, "email_sends", fmt.Sprintf("%f", min), fmt.Sprintf("%f", max)).Result()
+	return c.client.ZCount(ctx, sentEmailsStorageKey, fmt.Sprintf("%f", min), fmt.Sprintf("%f", max)).Result()
 }
 
 // Cleanup removes entries older than N hours periodically
 func (c *RedisEmailTracker) Cleanup(ctx context.Context) error {
 	min := float64(0)
-	max := float64(time.Now().Add(-c.trackingHoursForEmailsQuota * time.Hour).Unix())
-	return c.client.ZRemRangeByScore(ctx, "email_sends", fmt.Sprintf("%f", min), fmt.Sprintf("%f", max)).Err()
+	max := float64(time.Now().Add(-c.trackingHoursForEmailsQuota).Unix())
+	return c.client.ZRemRangeByScore(ctx, sentEmailsStorageKey, fmt.Sprintf("%f", min), fmt.Sprintf("%f", max)).Err()
 }
