@@ -19,34 +19,58 @@ import (
 )
 
 func main() {
-	// Load environment variables from .env file (if exists)
+	env := loadConfig()
+
+	router := setupRouter()
+	redisCli := setupRedis(env)
+
+	emailStatsRepo := repo.NewEmailStatsRepo(redisCli)
+	emailStatsService := setupEmailService(env, redisCli, emailStatsRepo)
+
+	registerRoutes(router, emailStatsService, emailStatsRepo)
+
+	server := startServer(router)
+	gracefulShutdown(server)
+}
+
+// loadConfig initializes environment configuration
+func loadConfig() config.Env {
 	env, err := config.Process()
 	if err != nil {
-		log.Fatal("failed to load env config")
+		log.Fatal("Failed to load environment configuration")
 	}
+	return env
+}
 
-	// Set Gin to release mode for production
+// setupRouter initializes the Gin router with middleware
+func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
-
-	// Initialize router
 	router := gin.New()
 
-	// Middleware stack
 	router.Use(
-		gin.Logger(),   // Logs requests
-		gin.Recovery(), // Recovers from panics
+		gin.Logger(),
+		gin.Recovery(),
 	)
 
-	// Initialize services
+	return router
+}
+
+// setupRedis initializes Redis client and verifies connection
+func setupRedis(env config.Env) *redis.Client {
 	redisCli := redis.NewClient(&redis.Options{
 		Addr: env.RedisAddr,
 	})
-	// Check Redis connection
+
 	ctx := context.Background()
 	if err := redisCli.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
 
+	return redisCli
+}
+
+// setupEmailService initializes email service and its dependencies
+func setupEmailService(env config.Env, redisCli *redis.Client, emailStatsRepo repo.EmailStatsRepoImpl) service.EmailStatsService {
 	sentEmailTracker := repo.NewRedisEmailTracker(redisCli, env.TrackingHoursForEmailsQuota)
 
 	validators := []service.Validator{
@@ -58,20 +82,27 @@ func main() {
 		validator.NewQuotaValidator(sentEmailTracker, env.AWSEmailsQuotaForLastNHours),
 	}
 
-	emailService := service.NewEmailService(validators, sentEmailTracker, service.FailureConfig{FailRandomly: env.FailRandomly, FailPercentage: env.FailPercentage})
-	emailStatsRepo := repo.NewEmailStatsRepo(redisCli)
+	emailService := service.NewEmailService(validators, sentEmailTracker, service.FailureConfig{
+		FailRandomly:   env.FailRandomly,
+		FailPercentage: env.FailPercentage,
+	})
 
-	// Decorate the core email service with stats therefore taking `emailService` as downstream.
-	emailStatsService := service.NewEmailStatsService(emailService, emailStatsRepo, emailStatsRepo)
+	// Wrap email service with stats tracking
+	return service.NewEmailStatsService(emailService, emailStatsRepo, emailStatsRepo)
+}
+
+// registerRoutes sets up API routes
+func registerRoutes(router *gin.Engine, emailStatsService service.EmailStatsService, emailStatsRepo repo.EmailStatsRepoImpl) {
+	apiGroup := router.Group("/api/v1")
 	emailHandler := api.NewEmailHandler(emailStatsService, emailStatsRepo)
 	emailStatsHandler := api.NewEmailStatsHandler(emailStatsService)
 
-	// Register routes
-	api := router.Group("/api/v1")
-	api.POST("/send-email", emailHandler.SendEmailHandler)
-	api.GET("/email-stats", emailStatsHandler.GetEmailStats)
+	apiGroup.POST("/send-email", emailHandler.SendEmailHandler)
+	apiGroup.GET("/email-stats", emailStatsHandler.GetEmailStats)
+}
 
-	// Server settings
+// startServer initializes and starts the HTTP server
+func startServer(router *gin.Engine) *http.Server {
 	server := &http.Server{
 		Addr:           ":8080",
 		Handler:        router,
@@ -81,7 +112,6 @@ func main() {
 		MaxHeaderBytes: 1 << 20, // 1MB
 	}
 
-	// Graceful shutdown handling
 	go func() {
 		log.Println("Starting server on port 8080...")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -89,13 +119,17 @@ func main() {
 		}
 	}()
 
-	// Wait for termination signal (SIGINT, SIGTERM)
+	return server
+}
+
+// gracefulShutdown handles cleanup and graceful termination
+func gracefulShutdown(server *http.Server) {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
+
 	log.Println("Shutting down server...")
 
-	// Create context with timeout for cleanup
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
