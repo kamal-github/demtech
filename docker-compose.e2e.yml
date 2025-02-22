@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: api
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    environment:
+      REDIS_ADDR: redis:6379
+      FAIL_RANDOMLY: false
+    networks:
+      - app_network
+  redis:
+    image: redis:latest
+    container_name: e2e_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_e2e:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    networks:
+      - app_network
+  e2e-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    depends_on:
+      - api
+    environment:
+      API_BASE_URL: "http://api:8080"
+    networks:
+      - app_network  
+
+volumes:
+  redis_data_e2e:
+    driver: local
+
+networks:
+  app_network:
+    driver: bridge
