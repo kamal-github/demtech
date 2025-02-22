@@ -118,6 +118,14 @@ curl localhost:8080/api/v1/email-stats
 }
 ```
 
+## Prerequisites
+
+This project requires the following tools to be installed on the system:
+
+  - Golang 1.24
+  - Docker
+
+
 ## Running Tests
 
 - **Unit Tests** *(Faster Execution)*
@@ -153,4 +161,5 @@ make down
 - The AWS SES API is really extensive and the documentation is quite spread and quite time consuming. Remaining behaviour that are missing, I wish I could implement them.
 - Instrumentation using OpenTelemetry.
 - More statistic can be added as per demand.
+- It could support rate limiter for APIs to prevent abuse.
 
