@@ -1,0 +1,26 @@
+# Ignore binaries
+/main
+*.exe
+*.out
+
+# Ignore temporary files
+*.log
+*.tmp
+*.swp
+
+# Ignore build artifacts
+/bin/
+/pkg/
+/vendor/
+
+# Ignore version control files
+.git/
+.gitignore
+
+# Ignore IDE/editor files
+.vscode/
+.idea/
+*.DS_Store
+
+# Ignore environment files
+.env
