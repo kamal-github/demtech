@@ -41,23 +41,35 @@ func main() {
 	redisCli := redis.NewClient(&redis.Options{
 		Addr: env.RedisAddr,
 	})
+	// Check Redis connection
+	ctx := context.Background()
+	if err := redisCli.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	}
+
 	sentEmailTracker := repo.NewRedisEmailTracker(redisCli, env.TrackingHoursForEmailsQuota)
 
 	validators := []service.Validator{
 		validator.NewEmailValidator(),
 		validator.NewMaxBodySizeValidator(env.AWSMaxEmailSizeAllowedBytes),
 		validator.NewMaxDestinationsValidator(env.AWSMaxDestinations),
-		validator.NewSandboxValidator(env.AWSSandboxAllowedDestinations),
+		validator.NewSandboxValidator(env.AWSIsSandBox, env.AWSSandboxAllowedDestinations),
 		validator.NewVerifiedEmailValidator(env.AWSVerifiedSourceEmailIDs),
 		validator.NewQuotaValidator(sentEmailTracker, env.AWSEmailsQuotaForLastNHours),
 	}
 
-	emailService := service.NewEmailService(validators, sentEmailTracker)
-	emailHandler := api.NewEmailHandler(emailService)
+	emailService := service.NewEmailService(validators, sentEmailTracker, service.FailureConfig{FailRandomly: env.FailRandomly, FailPercentage: env.FailPercentage})
+	emailStatsRepo := repo.NewEmailStatsRepo(redisCli)
+
+	// Decorate the core email service with stats therefore taking `emailService` as downstream.
+	emailStatsService := service.NewEmailStatsService(emailService, emailStatsRepo, emailStatsRepo)
+	emailHandler := api.NewEmailHandler(emailStatsService, emailStatsRepo)
+	emailStatsHandler := api.NewEmailStatsHandler(emailStatsService)
 
 	// Register routes
 	api := router.Group("/api/v1")
 	api.POST("/send-email", emailHandler.SendEmailHandler)
+	api.GET("/email-stats", emailStatsHandler.GetEmailStats)
 
 	// Server settings
 	server := &http.Server{
