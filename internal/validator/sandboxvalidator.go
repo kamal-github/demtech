@@ -7,14 +7,19 @@ import (
 )
 
 type SandboxValidator struct {
+	awsIsSandbox                  bool
 	awsSandboxAllowedDestinations []string
 }
 
-func NewSandboxValidator(e []string) SandboxValidator {
-	return SandboxValidator{awsSandboxAllowedDestinations: e}
+func NewSandboxValidator(s bool, e []string) SandboxValidator {
+	return SandboxValidator{awsIsSandbox: s, awsSandboxAllowedDestinations: e}
 }
 
 func (v SandboxValidator) Validate(ctx context.Context, req model.EmailRequest) error {
+	if !v.awsIsSandbox {
+		return nil
+	}
+
 	sandboxEmails := make(map[string]struct{})
 	for _, e := range v.awsSandboxAllowedDestinations {
 		sandboxEmails[e] = struct{}{}

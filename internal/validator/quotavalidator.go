@@ -15,8 +15,8 @@ type QuotaValidator struct {
 	awsEmailsQuotaForLastNHours int64
 }
 
-func NewQuotaValidator(g LastNHoursCountGetter, eq int64) QuotaValidator {
-	return QuotaValidator{lastNHoursCountGetter: g, awsEmailsQuotaForLastNHours: eq}
+func NewQuotaValidator(g LastNHoursCountGetter, q int64) QuotaValidator {
+	return QuotaValidator{lastNHoursCountGetter: g, awsEmailsQuotaForLastNHours: q}
 }
 
 func (v QuotaValidator) Validate(ctx context.Context, req model.EmailRequest) error {
@@ -26,7 +26,7 @@ func (v QuotaValidator) Validate(ctx context.Context, req model.EmailRequest) er
 	}
 
 	if emailsSent >= v.awsEmailsQuotaForLastNHours {
-		return &model.SESError{Code: "ThrottlingException", Message: "Sending quota exceeded"}
+		return &model.SESError{Code: "LimitExceededException", Message: "Sending quota exceeded"}
 	}
 
 	return nil

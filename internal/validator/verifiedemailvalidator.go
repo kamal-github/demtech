@@ -27,5 +27,5 @@ func (v VerifiedEmailValidator) Validate(ctx context.Context, req model.EmailReq
 		}
 	}
 
-	return &model.SESError{Code: "EmailAddressNotVerified", Message: "Email address not verified"}
+	return &model.SESError{Code: "MailFromDomainNotVerifiedException", Message: "Email address not verified"}
 }

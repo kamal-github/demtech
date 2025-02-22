@@ -16,7 +16,7 @@ func NewMaxBodySizeValidator(m int64) MaxBodySizeValidator {
 
 func (v MaxBodySizeValidator) Validate(ctx context.Context, req model.EmailRequest) error {
 	if int64(len(req.Message.Body.Text.Data)) > v.awsMaxEmailSizeAllowedBytes {
-		return &model.SESError{Code: "MessageTooLarge", Message: "Email body exceeds maximum size"}
+		return &model.SESError{Code: "MessageTooLong", Message: "Email body exceeds maximum size"}
 	}
 
 	return nil
