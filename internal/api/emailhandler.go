@@ -15,14 +15,20 @@ type EmailService interface {
 	SendEmail(ctx context.Context, req model.EmailRequest) (*model.SESResponse, error)
 }
 
+type EmailsStatsUpdater interface {
+	IncrementSuccess(ctx context.Context) error
+	IncrementError(ctx context.Context, errorType string) error
+}
+
 // EmailHandler struct
 type EmailHandler struct {
-	service EmailService
+	service      EmailService
+	statsUpdater EmailsStatsUpdater
 }
 
 // NewEmailHandler creates a new EmailHandler
-func NewEmailHandler(service EmailService) *EmailHandler {
-	return &EmailHandler{service: service}
+func NewEmailHandler(s EmailService, u EmailsStatsUpdater) *EmailHandler {
+	return &EmailHandler{service: s, statsUpdater: u}
 }
 
 // SendEmailHandler handles sending emails
@@ -30,6 +36,10 @@ func (h *EmailHandler) SendEmailHandler(c *gin.Context) {
 	var emailReq model.EmailRequest
 
 	if err := c.ShouldBindJSON(&emailReq); err != nil {
+		// Note: AWS retunrs MissingParameter or InvalidParameterValue errortype, but gin
+		// returs different error, there will be a  need to map thoses errors manually.
+		// Currently, keeping custom key to keep it simple.
+		h.statsUpdater.IncrementError(c.Request.Context(), "MissingOrInvalidParameterValue")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
